@@ -6,6 +6,7 @@ const zlib = require('zlib');
 
 const PORT = 3000;
 const KERNEL_LOG_URL = 'https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/log/?h=linux-6.12.y';
+const KERNEL_ATOM_URL = 'https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/atom/?h=linux-6.12.y';
 
 // CORS 헤더 설정
 function setCorsHeaders(res) {
@@ -140,6 +141,46 @@ function handleResponse(response, resolve, reject) {
     });
 }
 
+// Atom 피드 가져오기 (Bot 감지 우회용)
+function fetchAtomFeed() {
+    return new Promise((resolve, reject) => {
+        console.log('📡 Fetching Atom feed from:', KERNEL_ATOM_URL);
+
+        const parsedUrl = new URL(KERNEL_ATOM_URL);
+
+        const options = {
+            hostname: parsedUrl.hostname,
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: 'GET',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'Accept': 'application/atom+xml,application/xml,text/xml,*/*',
+                'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Connection': 'keep-alive',
+                'Cache-Control': 'no-cache'
+            }
+        };
+
+        console.log('📤 요청 헤더:', options.headers);
+
+        https.get(options, (response) => {
+            console.log('✅ 응답 상태:', response.statusCode, response.statusMessage);
+            console.log('📋 응답 헤더:', response.headers);
+
+            if (response.statusCode !== 200) {
+                reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+                return;
+            }
+
+            handleResponse(response, resolve, reject);
+        }).on('error', (error) => {
+            console.error('❌ 요청 실패:', error.message);
+            reject(error);
+        });
+    });
+}
+
 // HTTP 서버 생성
 const server = http.createServer(async (req, res) => {
     const parsedUrl = url.parse(req.url, true);
@@ -155,7 +196,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // 커널 로그 API
+    // 커널 로그 API (HTML)
     if (pathname === '/api/kernel-logs' && req.method === 'GET') {
         setCorsHeaders(res);
 
@@ -169,6 +210,32 @@ const server = http.createServer(async (req, res) => {
             res.end(html);
 
             console.log('✅ 응답 전송 완료');
+        } catch (error) {
+            console.error('❌ 에러:', error.message);
+
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                error: error.message,
+                timestamp: new Date().toISOString()
+            }));
+        }
+        return;
+    }
+
+    // Atom 피드 API
+    if (pathname === '/api/atom-feed' && req.method === 'GET') {
+        setCorsHeaders(res);
+
+        try {
+            const xml = await fetchAtomFeed();
+
+            res.writeHead(200, {
+                'Content-Type': 'application/atom+xml; charset=utf-8',
+                'Content-Length': Buffer.byteLength(xml)
+            });
+            res.end(xml);
+
+            console.log('✅ Atom 피드 전송 완료');
         } catch (error) {
             console.error('❌ 에러:', error.message);
 

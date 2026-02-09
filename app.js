@@ -2,9 +2,10 @@
 
 const KERNEL_LOG_URL = 'https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/log/?h=linux-6.12.y';
 const BACKEND_API_URL = 'http://localhost:3000/api/kernel-logs';
+const ATOM_FEED_API_URL = 'http://localhost:3000/api/atom-feed';
 
-// 직접 접근 vs 백엔드 사용 선택
-const USE_DIRECT_ACCESS = true; // true: 직접 접근, false: 백엔드 사용
+// 데이터 소스 선택: 'direct', 'backend', 'atom'
+const DATA_SOURCE = 'atom'; // atom: Atom 피드 (권장)
 
 // DOM 요소
 const loadBtn = document.getElementById('loadBtn');
@@ -42,13 +43,18 @@ async function loadKernelLogs() {
         loadBtn.disabled = true;
         statusEl.textContent = '로그를 가져오는 중...';
 
-        console.log('📡 Fetching logs from backend API:', BACKEND_API_URL);
-        const html = await fetchKernelLogs();
-        console.log('✅ HTML 가져오기 완료. 길이:', html.length, 'bytes');
-        console.log('HTML 미리보기 (처음 500자):', html.substring(0, 500));
+        console.log('📡 Fetching logs...');
+        const data = await fetchKernelLogs();
+        console.log('✅ 데이터 가져오기 완료. 길이:', data.length, 'bytes');
+        console.log('데이터 미리보기 (처음 500자):', data.substring(0, 500));
 
         console.log('\n📝 커밋 파싱 시작...');
-        const commits = parseCommits(html);
+        let commits;
+        if (DATA_SOURCE === 'atom') {
+            commits = parseCommitsFromAtom(data);
+        } else {
+            commits = parseCommits(data);
+        }
         console.log('✅ 파싱 완료. 총 커밋 수:', commits.length);
 
         if (commits.length > 0) {
@@ -99,10 +105,14 @@ async function loadKernelLogs() {
 
 // 커널 로그 HTML 가져오기
 async function fetchKernelLogs() {
-    if (USE_DIRECT_ACCESS) {
+    if (DATA_SOURCE === 'direct') {
         console.log('  → 🎯 직접 접근 모드');
         console.log('  → 대상 URL:', KERNEL_LOG_URL);
         return await fetchDirectly();
+    } else if (DATA_SOURCE === 'atom') {
+        console.log('  → 📡 Atom 피드 모드 (권장)');
+        console.log('  → Atom 피드 API URL:', ATOM_FEED_API_URL);
+        return await fetchAtomFeed();
     } else {
         console.log('  → 🔄 백엔드 API 모드');
         console.log('  → 백엔드 API URL:', BACKEND_API_URL);
@@ -185,6 +195,115 @@ async function fetchViaBackend() {
         }
         throw error;
     }
+}
+
+// Atom 피드 가져오기
+async function fetchAtomFeed() {
+    console.log('  → Fetch 요청 시작 (Atom 피드)...');
+
+    try {
+        const response = await fetch(ATOM_FEED_API_URL, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/atom+xml,application/xml,text/xml',
+            }
+        });
+
+        console.log('  → 응답 상태:', response.status, response.statusText);
+        console.log('  → 응답 헤더:', Object.fromEntries(response.headers.entries()));
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('  → 에러 응답:', errorText.substring(0, 500));
+            throw new Error(`HTTP 오류! 상태: ${response.status}`);
+        }
+
+        console.log('  → XML 본문 읽는 중...');
+        const xml = await response.text();
+        console.log('  → XML 본문 길이:', xml.length);
+
+        return xml;
+    } catch (error) {
+        if (error.message.includes('Failed to fetch')) {
+            console.error('  ❌ 백엔드 서버에 연결할 수 없습니다!');
+            console.error('  💡 server.js를 실행했는지 확인하세요: node server.js');
+            throw new Error('백엔드 서버에 연결할 수 없습니다. server.js를 실행했는지 확인하세요.');
+        }
+        throw error;
+    }
+}
+
+// Atom XML 파싱하여 커밋 정보 추출
+function parseCommitsFromAtom(xml) {
+    console.log('  → DOMParser로 XML 파싱 중...');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'text/xml');
+    const commits = [];
+
+    // Atom 피드의 entry 요소 추출
+    console.log('  → Entry 검색...');
+    const entries = doc.querySelectorAll('entry');
+    console.log(`  → 찾은 entry 수: ${entries.length}`);
+
+    entries.forEach((entry, idx) => {
+        try {
+            // title: 커밋 메시지
+            const titleEl = entry.querySelector('title');
+            const message = titleEl ? titleEl.textContent.trim() : '';
+
+            // author: 작성자
+            const authorEl = entry.querySelector('author name');
+            const author = authorEl ? authorEl.textContent.trim() : '';
+
+            // updated: 날짜
+            const updatedEl = entry.querySelector('updated');
+            const dateStr = updatedEl ? updatedEl.textContent.trim() : '';
+            const date = dateStr ? new Date(dateStr).toLocaleString('ko-KR') : '';
+
+            // id 또는 link에서 커밋 해시 추출
+            const idEl = entry.querySelector('id');
+            const linkEl = entry.querySelector('link[rel="alternate"]');
+
+            let hash = '';
+            if (linkEl && linkEl.getAttribute('href')) {
+                const href = linkEl.getAttribute('href');
+                const match = href.match(/id=([a-f0-9]+)/);
+                if (match) {
+                    hash = match[1];
+                }
+            }
+
+            // 메시지가 없으면 스킵
+            if (!message) {
+                return;
+            }
+
+            // 버전 태그 추출
+            const versionMatch = message.match(/Linux (6\.12\.\d+)/i) ||
+                               message.match(/v(6\.12\.\d+)/i) ||
+                               message.match(/(6\.12\.\d+)/);
+            const version = versionMatch ? versionMatch[1] : null;
+
+            commits.push({
+                date,
+                message,
+                author,
+                hash: hash || 'unknown',
+                version,
+                summary: generateSummary(message)
+            });
+
+            if (idx < 3) {
+                console.log(`  → Entry #${idx + 1} 파싱 성공:`, message.substring(0, 60));
+            }
+        } catch (error) {
+            console.error(`  ❌ Entry #${idx + 1} 파싱 에러:`, error);
+        }
+    });
+
+    console.log(`  → 파싱 결과: ${commits.length}개 커밋`);
+
+    return commits;
 }
 
 // HTML 파싱하여 커밋 정보 추출
