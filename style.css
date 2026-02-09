@@ -1,0 +1,228 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+    color: #333;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+header {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    color: white;
+    padding: 40px;
+    text-align: center;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    font-size: 1.1rem;
+    opacity: 0.9;
+}
+
+.controls {
+    padding: 30px 40px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.load-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    font-size: 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.load-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.load-btn:active {
+    transform: translateY(0);
+}
+
+.load-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.status {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.content {
+    padding: 40px;
+}
+
+.loading {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.error {
+    background: #fee;
+    border-left: 4px solid #e74c3c;
+    padding: 20px;
+    border-radius: 8px;
+    color: #c0392b;
+}
+
+.hidden {
+    display: none;
+}
+
+.version-group {
+    margin-bottom: 40px;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    overflow: hidden;
+    transition: box-shadow 0.3s;
+}
+
+.version-group:hover {
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.version-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px 30px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+}
+
+.version-header h2 {
+    font-size: 1.5rem;
+}
+
+.version-header .count {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+}
+
+.version-content {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.version-content.collapsed {
+    display: none;
+}
+
+.commit {
+    padding: 20px 30px;
+    border-bottom: 1px solid #eee;
+    transition: background 0.2s;
+}
+
+.commit:hover {
+    background: #f8f9fa;
+}
+
+.commit:last-child {
+    border-bottom: none;
+}
+
+.commit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.commit-hash {
+    font-family: 'Courier New', monospace;
+    background: #e9ecef;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #495057;
+}
+
+.commit-date {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.commit-author {
+    color: #495057;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.commit-message {
+    color: #212529;
+    line-height: 1.6;
+    margin-bottom: 8px;
+}
+
+.commit-summary {
+    color: #667eea;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 10px;
+    background: #f0f3ff;
+    border-radius: 6px;
+    border-left: 3px solid #667eea;
+}
+
+.no-data {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6c757d;
+}
+
+.no-data p {
+    font-size: 1.2rem;
+    margin-bottom: 10px;
+}

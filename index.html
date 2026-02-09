@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linux Kernel 6.12 Git 로그 조회</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🐧 Linux Kernel 6.12 Git 로그</h1>
+            <p class="subtitle">커널 변경 사항을 버전별로 확인하세요</p>
+        </header>
+
+        <div class="controls">
+            <button id="loadBtn" class="load-btn">로그 불러오기</button>
+            <div class="status" id="status"></div>
+        </div>
+
+        <div class="content">
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>로그를 불러오는 중...</p>
+            </div>
+
+            <div id="error" class="error hidden"></div>
+
+            <div id="logContainer" class="log-container"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

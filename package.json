@@ -1,0 +1,19 @@
+{
+  "name": "linux-kernel-log-viewer",
+  "version": "1.0.0",
+  "description": "Linux Kernel 6.12 Git 로그 조회 웹 애플리케이션",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "linux",
+    "kernel",
+    "git",
+    "log",
+    "viewer"
+  ],
+  "author": "",
+  "license": "MIT"
+}
