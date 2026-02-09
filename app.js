@@ -13,6 +13,14 @@ const statusEl = document.getElementById('status');
 const loadingEl = document.getElementById('loading');
 const errorEl = document.getElementById('error');
 const logContainer = document.getElementById('logContainer');
+const loadMoreContainer = document.getElementById('loadMoreContainer');
+const loadMoreBtn = document.getElementById('loadMoreBtn');
+
+// 페이지네이션 상태
+const COMMITS_PER_PAGE = 30; // 페이지당 커밋 수
+let currentOffset = 0;
+let totalCommitsLoaded = 0;
+let allCommits = []; // 모든 로드된 커밋 저장
 
 // 페이지 로드 시 디버그 정보 출력
 console.log('========================================');
@@ -29,24 +37,37 @@ console.log('  - logContainer:', logContainer ? '✓' : '✗');
 console.log('========================================\n');
 
 // 이벤트 리스너
-loadBtn.addEventListener('click', loadKernelLogs);
+loadBtn.addEventListener('click', () => loadKernelLogs(true)); // true = 초기 로드
+loadMoreBtn.addEventListener('click', () => loadKernelLogs(false)); // false = 추가 로드
 
 // 메인 함수: 커널 로그 불러오기
-async function loadKernelLogs() {
+async function loadKernelLogs(isInitial = true) {
     console.log('========================================');
-    console.log('🚀 로그 불러오기 시작');
+    console.log(isInitial ? '🚀 로그 불러오기 시작' : '📥 추가 로그 불러오기');
     console.log('========================================');
 
     try {
         showLoading();
         hideError();
         loadBtn.disabled = true;
-        statusEl.textContent = '로그를 가져오는 중...';
+        loadMoreBtn.disabled = true;
 
-        console.log('📡 Fetching logs...');
-        const data = await fetchKernelLogs();
+        if (isInitial) {
+            // 초기 로드: 상태 초기화
+            currentOffset = 0;
+            totalCommitsLoaded = 0;
+            allCommits = [];
+            logContainer.innerHTML = '';
+            statusEl.textContent = '로그를 가져오는 중...';
+        } else {
+            // 추가 로드
+            currentOffset += COMMITS_PER_PAGE; // 다음 페이지
+            statusEl.textContent = `추가 로그를 가져오는 중... (${currentOffset}번째부터)`;
+        }
+
+        console.log('📡 Fetching logs... (offset:', currentOffset, ')');
+        const data = await fetchKernelLogs(currentOffset);
         console.log('✅ 데이터 가져오기 완료. 길이:', data.length, 'bytes');
-        console.log('데이터 미리보기 (처음 500자):', data.substring(0, 500));
 
         console.log('\n📝 커밋 파싱 시작...');
         let commits;
@@ -55,36 +76,33 @@ async function loadKernelLogs() {
         } else {
             commits = parseCommits(data);
         }
-        console.log('✅ 파싱 완료. 총 커밋 수:', commits.length);
+        console.log('✅ 파싱 완료. 이번 페이지 커밋 수:', commits.length);
 
-        if (commits.length > 0) {
-            console.log('\n샘플 커밋 (첫 3개):');
-            commits.slice(0, 3).forEach((commit, idx) => {
-                console.log(`\n  커밋 #${idx + 1}:`, {
-                    hash: commit.hash,
-                    date: commit.date,
-                    author: commit.author,
-                    message: commit.message.substring(0, 100) + '...',
-                    version: commit.version,
-                    summary: commit.summary
-                });
-            });
-        } else {
-            console.warn('⚠️ 파싱된 커밋이 없습니다!');
+        if (commits.length === 0) {
+            console.warn('⚠️ 더 이상 로드할 커밋이 없습니다!');
+            hideLoadMoreBtn();
+            statusEl.textContent = `총 ${totalCommitsLoaded}개의 커밋을 불러왔습니다. (모두 로드됨)`;
+            hideLoading();
+            return;
         }
 
+        // 새 커밋을 전체 목록에 추가
+        allCommits = allCommits.concat(commits);
+        totalCommitsLoaded = allCommits.length;
+
         console.log('\n📦 버전별 그룹화 시작...');
-        const groupedCommits = groupByVersion(commits);
+        const groupedCommits = groupByVersion(allCommits);
         console.log('✅ 그룹화 완료. 버전 그룹 수:', groupedCommits.size);
-        groupedCommits.forEach((commits, version) => {
-            console.log(`  - ${version}: ${commits.length}개 커밋`);
-        });
 
         console.log('\n🎨 UI 렌더링 시작...');
         displayLogs(groupedCommits);
         console.log('✅ 렌더링 완료');
 
-        statusEl.textContent = `총 ${commits.length}개의 커밋을 불러왔습니다.`;
+        statusEl.textContent = `총 ${totalCommitsLoaded}개의 커밋을 불러왔습니다.`;
+
+        // "더 보기" 버튼 표시
+        showLoadMoreBtn();
+
         hideLoading();
 
         console.log('\n========================================');
@@ -100,11 +118,12 @@ async function loadKernelLogs() {
         statusEl.textContent = '';
     } finally {
         loadBtn.disabled = false;
+        loadMoreBtn.disabled = false;
     }
 }
 
 // 커널 로그 HTML 가져오기
-async function fetchKernelLogs() {
+async function fetchKernelLogs(offset = 0) {
     if (DATA_SOURCE === 'direct') {
         console.log('  → 🎯 직접 접근 모드');
         console.log('  → 대상 URL:', KERNEL_LOG_URL);
@@ -112,7 +131,7 @@ async function fetchKernelLogs() {
     } else if (DATA_SOURCE === 'atom') {
         console.log('  → 📡 Atom 피드 모드 (권장)');
         console.log('  → Atom 피드 API URL:', ATOM_FEED_API_URL);
-        return await fetchAtomFeed();
+        return await fetchAtomFeed(offset);
     } else {
         console.log('  → 🔄 백엔드 API 모드');
         console.log('  → 백엔드 API URL:', BACKEND_API_URL);
@@ -198,11 +217,12 @@ async function fetchViaBackend() {
 }
 
 // Atom 피드 가져오기
-async function fetchAtomFeed() {
-    console.log('  → Fetch 요청 시작 (Atom 피드)...');
+async function fetchAtomFeed(offset = 0) {
+    console.log('  → Fetch 요청 시작 (Atom 피드, offset:', offset, ')...');
 
     try {
-        const response = await fetch(ATOM_FEED_API_URL, {
+        const url = `${ATOM_FEED_API_URL}?offset=${offset}`;
+        const response = await fetch(url, {
             method: 'GET',
             headers: {
                 'Accept': 'application/atom+xml,application/xml,text/xml',
@@ -502,11 +522,18 @@ function generateSummary(message) {
     return '📋 일반 커밋';
 }
 
-// 버전별로 커밋 그룹화
+// 버전별로 커밋 그룹화 (CVE 보안 항목 우선)
 function groupByVersion(commits) {
     const grouped = new Map();
+    const cveCommits = []; // CVE 관련 커밋
 
     commits.forEach(commit => {
+        // CVE 키워드 체크 (대소문자 구분 없이)
+        if (commit.message.match(/CVE-\d{4}-\d+/i) || commit.message.toUpperCase().includes('CVE')) {
+            cveCommits.push(commit);
+            return; // CVE 커밋은 별도로 분류
+        }
+
         const key = commit.version || 'Other';
         if (!grouped.has(key)) {
             grouped.set(key, []);
@@ -514,7 +541,26 @@ function groupByVersion(commits) {
         grouped.get(key).push(commit);
     });
 
-    // 버전 순으로 정렬
+    // CVE 커밋이 있으면 맨 앞에 추가
+    if (cveCommits.length > 0) {
+        const sortedGroupsWithCVE = new Map();
+        sortedGroupsWithCVE.set('🔒 보안 관련 (CVE)', cveCommits);
+
+        // 나머지 버전 순으로 정렬
+        const sortedGroups = [...grouped.entries()].sort((a, b) => {
+            if (a[0] === 'Other') return 1;
+            if (b[0] === 'Other') return -1;
+            return b[0].localeCompare(a[0], undefined, { numeric: true });
+        });
+
+        sortedGroups.forEach(([key, value]) => {
+            sortedGroupsWithCVE.set(key, value);
+        });
+
+        return sortedGroupsWithCVE;
+    }
+
+    // CVE 커밋이 없으면 기존 방식대로
     const sortedGroups = new Map([...grouped.entries()].sort((a, b) => {
         if (a[0] === 'Other') return 1;
         if (b[0] === 'Other') return -1;
@@ -557,6 +603,11 @@ function displayLogs(groupedCommits) {
 function createVersionGroup(version, commits) {
     const group = document.createElement('div');
     group.className = 'version-group';
+
+    // CVE 보안 항목이면 특별 클래스 추가
+    if (version.includes('보안 관련') || version.includes('CVE')) {
+        group.classList.add('security');
+    }
 
     const header = document.createElement('div');
     header.className = 'version-header';
@@ -612,7 +663,6 @@ function escapeHtml(text) {
 // UI 헬퍼 함수
 function showLoading() {
     loadingEl.classList.remove('hidden');
-    logContainer.innerHTML = '';
 }
 
 function hideLoading() {
@@ -626,4 +676,12 @@ function showError(message) {
 
 function hideError() {
     errorEl.classList.add('hidden');
+}
+
+function showLoadMoreBtn() {
+    loadMoreContainer.classList.remove('hidden');
+}
+
+function hideLoadMoreBtn() {
+    loadMoreContainer.classList.add('hidden');
 }

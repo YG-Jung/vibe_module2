@@ -137,6 +137,17 @@ header h1 {
     user-select: none;
 }
 
+/* CVE 보안 항목 특별 스타일 */
+.version-group.security .version-header {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    animation: pulse-security 2s ease-in-out infinite;
+}
+
+@keyframes pulse-security {
+    0%, 100% { box-shadow: 0 0 10px rgba(231, 76, 60, 0.5); }
+    50% { box-shadow: 0 0 20px rgba(231, 76, 60, 0.8); }
+}
+
 .version-header h2 {
     font-size: 1.5rem;
 }
@@ -225,4 +236,48 @@ header h1 {
 .no-data p {
     font-size: 1.2rem;
     margin-bottom: 10px;
+}
+
+.load-more-container {
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.load-more-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 15px 40px;
+    font-size: 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: center;
+}
+
+.load-more-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.load-more-btn:active {
+    transform: translateY(0);
+}
+
+.load-more-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.load-more-btn .btn-text {
+    font-size: 1.1rem;
+}
+
+.load-more-btn .btn-info {
+    font-size: 0.85rem;
+    opacity: 0.9;
 }

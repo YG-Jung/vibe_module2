@@ -141,12 +141,13 @@ function handleResponse(response, resolve, reject) {
     });
 }
 
-// Atom 피드 가져오기 (Bot 감지 우회용)
-function fetchAtomFeed() {
+// Atom 피드 가져오기 (단일 페이지)
+function fetchSingleAtomPage(offset = 0) {
     return new Promise((resolve, reject) => {
-        console.log('📡 Fetching Atom feed from:', KERNEL_ATOM_URL);
+        const urlWithOffset = `${KERNEL_ATOM_URL}&ofs=${offset}`;
+        console.log('📡 Fetching Atom feed from:', urlWithOffset);
 
-        const parsedUrl = new URL(KERNEL_ATOM_URL);
+        const parsedUrl = new URL(urlWithOffset);
 
         const options = {
             hostname: parsedUrl.hostname,
@@ -179,6 +180,69 @@ function fetchAtomFeed() {
             reject(error);
         });
     });
+}
+
+// 여러 페이지의 Atom 피드 가져오기 (30개)
+async function fetchAtomFeed(startOffset = 0, count = 30) {
+    console.log(`📡 Fetching ${count} commits starting from offset ${startOffset}`);
+
+    const pages = Math.ceil(count / 10); // 10개씩 가져오므로
+    const promises = [];
+
+    for (let i = 0; i < pages; i++) {
+        const offset = startOffset + (i * 10);
+        promises.push(fetchSingleAtomPage(offset));
+    }
+
+    try {
+        const xmlPages = await Promise.all(promises);
+        console.log(`✅ ${xmlPages.length}개 페이지 가져오기 완료`);
+
+        // XML 파싱하여 entry들을 추출하고 합치기
+        const combinedEntries = [];
+
+        xmlPages.forEach((xml, idx) => {
+            // entry 태그들을 추출
+            const entryMatches = xml.match(/<entry>[\s\S]*?<\/entry>/g);
+            if (entryMatches) {
+                combinedEntries.push(...entryMatches);
+                console.log(`  페이지 ${idx + 1}: ${entryMatches.length}개 entry`);
+            }
+        });
+
+        console.log(`📦 총 ${combinedEntries.length}개 entry 추출`);
+
+        // 첫 번째 페이지의 XML 구조를 사용하여 합친 XML 생성
+        const firstXml = xmlPages[0];
+
+        // feed 태그의 시작과 끝 찾기
+        const feedStartIndex = firstXml.indexOf('<feed');
+        const feedEndTagIndex = firstXml.indexOf('</feed>');
+
+        if (feedStartIndex === -1 || feedEndTagIndex === -1) {
+            console.error('❌ XML 구조 오류:');
+            console.error('  feedStartIndex:', feedStartIndex);
+            console.error('  feedEndTagIndex:', feedEndTagIndex);
+            console.error('  XML 미리보기:', firstXml.substring(0, 500));
+            throw new Error('XML 구조를 파싱할 수 없습니다');
+        }
+
+        // feed 태그의 시작 부분 (속성 포함)
+        const feedOpenTagEnd = firstXml.indexOf('>', feedStartIndex);
+        const xmlHeader = firstXml.substring(0, feedOpenTagEnd + 1);
+
+        // 합친 XML 생성
+        const combinedXml = xmlHeader + '\n' +
+                           combinedEntries.join('\n') + '\n' +
+                           '</feed>';
+
+        console.log('✅ 합친 XML 생성 완료. 크기:', combinedXml.length);
+
+        return combinedXml;
+    } catch (error) {
+        console.error('❌ 여러 페이지 가져오기 실패:', error.message);
+        throw error;
+    }
 }
 
 // HTTP 서버 생성
@@ -227,7 +291,11 @@ const server = http.createServer(async (req, res) => {
         setCorsHeaders(res);
 
         try {
-            const xml = await fetchAtomFeed();
+            // offset 파라미터 추출
+            const offset = parseInt(parsedUrl.query.offset) || 0;
+            console.log('📥 요청된 offset:', offset);
+
+            const xml = await fetchAtomFeed(offset);
 
             res.writeHead(200, {
                 'Content-Type': 'application/atom+xml; charset=utf-8',
@@ -235,7 +303,7 @@ const server = http.createServer(async (req, res) => {
             });
             res.end(xml);
 
-            console.log('✅ Atom 피드 전송 완료');
+            console.log('✅ Atom 피드 전송 완료 (offset:', offset, ')');
         } catch (error) {
             console.error('❌ 에러:', error.message);
 
