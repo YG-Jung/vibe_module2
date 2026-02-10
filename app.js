@@ -458,6 +458,31 @@ function parseCommitRow(row) {
     }
 }
 
+// 커밋 카테고리 분류
+function categorizeCommit(message) {
+    const lowerMessage = message.toLowerCase();
+
+    // 1. CVE 취약점
+    if (message.match(/CVE-\d{4}-\d+/i) || lowerMessage.includes('cve')) {
+        return 'vulnerability';
+    }
+
+    // 2. 오류수정 (fix, bug)
+    if (lowerMessage.includes('fix') || lowerMessage.includes('bug') ||
+        lowerMessage.includes('revert')) {
+        return 'bugfix';
+    }
+
+    // 3. 일반커밋 (나머지)
+    return 'general';
+}
+
+// CVE 정보 추출
+function extractCVE(message) {
+    const cveMatch = message.match(/CVE-\d{4}-\d+/gi);
+    return cveMatch ? cveMatch : [];
+}
+
 // 커밋 메시지를 한글로 요약
 function generateSummary(message) {
     const lowerMessage = message.toLowerCase();
@@ -522,55 +547,74 @@ function generateSummary(message) {
     return '📋 일반 커밋';
 }
 
-// 버전별로 커밋 그룹화 (CVE 보안 항목 우선)
+// 버전별 -> 카테고리별로 커밋 그룹화
 function groupByVersion(commits) {
-    const grouped = new Map();
-    const cveCommits = []; // CVE 관련 커밋
+    // 1단계: 버전 릴리즈 찾기 (시간순으로 정렬)
+    const versionReleases = commits
+        .filter(commit => commit.version !== null)
+        .sort((a, b) => {
+            // 최신 버전이 앞에 오도록 정렬
+            return b.version.localeCompare(a.version, undefined, { numeric: true });
+        });
 
-    commits.forEach(commit => {
-        // CVE 키워드 체크 (대소문자 구분 없이)
-        if (commit.message.match(/CVE-\d{4}-\d+/i) || commit.message.toUpperCase().includes('CVE')) {
-            cveCommits.push(commit);
-            return; // CVE 커밋은 별도로 분류
+    console.log('  → 찾은 버전 릴리즈:', versionReleases.map(v => v.version));
+
+    // 2단계: 각 커밋에 버전 할당 (릴리즈 사이의 커밋은 최근 버전에 속함)
+    const versionMap = new Map();
+    let currentVersion = versionReleases.length > 0 ? versionReleases[0].version : 'Other';
+
+    commits.forEach((commit, index) => {
+        // 버전 릴리즈를 만나면 currentVersion 업데이트
+        if (commit.version !== null) {
+            currentVersion = commit.version;
         }
 
-        const key = commit.version || 'Other';
-        if (!grouped.has(key)) {
-            grouped.set(key, []);
+        // 커밋에 버전 할당
+        commit.assignedVersion = currentVersion;
+
+        // 버전별로 그룹화
+        if (!versionMap.has(currentVersion)) {
+            versionMap.set(currentVersion, []);
         }
-        grouped.get(key).push(commit);
+        versionMap.get(currentVersion).push(commit);
     });
 
-    // CVE 커밋이 있으면 맨 앞에 추가
-    if (cveCommits.length > 0) {
-        const sortedGroupsWithCVE = new Map();
-        sortedGroupsWithCVE.set('🔒 보안 관련 (CVE)', cveCommits);
+    // 3단계: 각 버전 내에서 카테고리별로 분류
+    const result = new Map();
 
-        // 나머지 버전 순으로 정렬
-        const sortedGroups = [...grouped.entries()].sort((a, b) => {
-            if (a[0] === 'Other') return 1;
-            if (b[0] === 'Other') return -1;
-            return b[0].localeCompare(a[0], undefined, { numeric: true });
+    // 버전을 최신순으로 정렬
+    const sortedVersions = [...versionMap.keys()].sort((a, b) => {
+        if (a === 'Other') return 1;
+        if (b === 'Other') return -1;
+        return b.localeCompare(a, undefined, { numeric: true });
+    });
+
+    sortedVersions.forEach(version => {
+        const versionCommits = versionMap.get(version);
+        const categoryMap = {
+            vulnerability: [],
+            bugfix: [],
+            general: []
+        };
+
+        versionCommits.forEach(commit => {
+            const category = categorizeCommit(commit.message);
+            categoryMap[category].push(commit);
+
+            // CVE 정보 추출하여 저장
+            if (category === 'vulnerability') {
+                commit.cveList = extractCVE(commit.message);
+            }
         });
 
-        sortedGroups.forEach(([key, value]) => {
-            sortedGroupsWithCVE.set(key, value);
-        });
+        result.set(version, categoryMap);
+    });
 
-        return sortedGroupsWithCVE;
-    }
-
-    // CVE 커밋이 없으면 기존 방식대로
-    const sortedGroups = new Map([...grouped.entries()].sort((a, b) => {
-        if (a[0] === 'Other') return 1;
-        if (b[0] === 'Other') return -1;
-        return b[0].localeCompare(a[0], undefined, { numeric: true });
-    }));
-
-    return sortedGroups;
+    console.log('  → 버전별 카테고리 그룹화 완료');
+    return result;
 }
 
-// 로그 표시
+// 로그 표시 (버전 -> 카테고리 -> 커밋)
 function displayLogs(groupedCommits) {
     console.log('  → 로그 컨테이너 초기화');
     logContainer.innerHTML = '';
@@ -589,39 +633,50 @@ function displayLogs(groupedCommits) {
     console.log(`  → ${groupedCommits.size}개의 버전 그룹 렌더링 시작`);
     let totalRendered = 0;
 
-    groupedCommits.forEach((commits, version) => {
-        console.log(`    → 버전 "${version}" 렌더링 중... (${commits.length}개 커밋)`);
-        const versionGroup = createVersionGroup(version, commits);
+    groupedCommits.forEach((categoryMap, version) => {
+        const totalCommits = categoryMap.vulnerability.length +
+                           categoryMap.bugfix.length +
+                           categoryMap.general.length;
+        console.log(`    → 버전 "${version}" 렌더링 중... (${totalCommits}개 커밋)`);
+        const versionGroup = createVersionGroup(version, categoryMap);
         logContainer.appendChild(versionGroup);
-        totalRendered += commits.length;
+        totalRendered += totalCommits;
     });
 
     console.log(`  ✅ 총 ${totalRendered}개 커밋 렌더링 완료`);
 }
 
-// 버전 그룹 생성
-function createVersionGroup(version, commits) {
+// 버전 그룹 생성 (카테고리별로 구분)
+function createVersionGroup(version, categoryMap) {
     const group = document.createElement('div');
     group.className = 'version-group';
 
-    // CVE 보안 항목이면 특별 클래스 추가
-    if (version.includes('보안 관련') || version.includes('CVE')) {
-        group.classList.add('security');
-    }
+    const totalCommits = categoryMap.vulnerability.length +
+                        categoryMap.bugfix.length +
+                        categoryMap.general.length;
 
     const header = document.createElement('div');
     header.className = 'version-header';
     header.innerHTML = `
         <h2>${version === 'Other' ? '기타 커밋' : 'v' + version}</h2>
-        <span class="count">${commits.length}개 커밋</span>
+        <span class="count">${totalCommits}개 커밋</span>
     `;
 
     const content = document.createElement('div');
     content.className = 'version-content';
 
-    commits.forEach(commit => {
-        const commitEl = createCommitElement(commit);
-        content.appendChild(commitEl);
+    // 카테고리 순서: 취약점 -> 오류수정 -> 일반커밋
+    const categories = [
+        { key: 'vulnerability', title: '🔴 취약점', commits: categoryMap.vulnerability },
+        { key: 'bugfix', title: '🔧 오류수정', commits: categoryMap.bugfix },
+        { key: 'general', title: '📋 일반커밋', commits: categoryMap.general }
+    ];
+
+    categories.forEach(category => {
+        if (category.commits.length > 0) {
+            const categoryGroup = createCategoryGroup(category.title, category.commits, category.key);
+            content.appendChild(categoryGroup);
+        }
     });
 
     // 토글 기능
@@ -635,10 +690,55 @@ function createVersionGroup(version, commits) {
     return group;
 }
 
+// 카테고리 그룹 생성
+function createCategoryGroup(title, commits, categoryKey) {
+    const group = document.createElement('div');
+    group.className = 'category-group';
+
+    if (categoryKey === 'vulnerability') {
+        group.classList.add('vulnerability-category');
+    }
+
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.innerHTML = `
+        <h3>${title}</h3>
+        <span class="category-count">${commits.length}개</span>
+    `;
+
+    const content = document.createElement('div');
+    content.className = 'category-content';
+
+    commits.forEach(commit => {
+        const commitEl = createCommitElement(commit, categoryKey === 'vulnerability');
+        content.appendChild(commitEl);
+    });
+
+    // 토글 기능
+    header.addEventListener('click', (e) => {
+        e.stopPropagation(); // 버전 헤더 클릭 이벤트 전파 방지
+        content.classList.toggle('collapsed');
+    });
+
+    group.appendChild(header);
+    group.appendChild(content);
+
+    return group;
+}
+
 // 개별 커밋 요소 생성
-function createCommitElement(commit) {
+function createCommitElement(commit, isVulnerability = false) {
     const commitEl = document.createElement('div');
     commitEl.className = 'commit';
+
+    if (isVulnerability) {
+        commitEl.classList.add('vulnerability-commit');
+    }
+
+    let cveLabel = '';
+    if (isVulnerability && commit.cveList && commit.cveList.length > 0) {
+        cveLabel = `<span class="cve-label">[${commit.cveList.join(', ')}]</span> `;
+    }
 
     commitEl.innerHTML = `
         <div class="commit-header">
@@ -646,7 +746,7 @@ function createCommitElement(commit) {
             <span class="commit-date">${commit.date}</span>
         </div>
         <div class="commit-author">작성자: ${commit.author}</div>
-        <div class="commit-message">${escapeHtml(commit.message)}</div>
+        <div class="commit-message">${cveLabel}${escapeHtml(commit.message)}</div>
         <div class="commit-summary">${commit.summary}</div>
     `;
 

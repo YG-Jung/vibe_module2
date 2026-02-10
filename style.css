@@ -281,3 +281,101 @@ header h1 {
     font-size: 0.85rem;
     opacity: 0.9;
 }
+
+/* 카테고리 그룹 스타일 */
+.category-group {
+    margin: 0;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.category-group:last-child {
+    border-bottom: none;
+}
+
+.category-header {
+    background: #f8f9fa;
+    padding: 15px 30px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.category-header:hover {
+    background: #e9ecef;
+}
+
+.category-header h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #495057;
+    margin: 0;
+}
+
+.category-count {
+    background: rgba(102, 126, 234, 0.1);
+    color: #667eea;
+    padding: 4px 12px;
+    border-radius: 15px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.category-content {
+    transition: max-height 0.3s ease-out;
+}
+
+.category-content.collapsed {
+    display: none;
+}
+
+/* 취약점 카테고리 특별 스타일 */
+.category-group.vulnerability-category .category-header {
+    background: linear-gradient(135deg, #fee 0%, #fdd 100%);
+    border-left: 4px solid #e74c3c;
+}
+
+.category-group.vulnerability-category .category-header h3 {
+    color: #c0392b;
+    font-weight: 700;
+}
+
+.category-group.vulnerability-category .category-count {
+    background: rgba(231, 76, 60, 0.2);
+    color: #c0392b;
+}
+
+/* 취약점 커밋 스타일 */
+.commit.vulnerability-commit {
+    background: #fff5f5;
+    border-left: 4px solid #e74c3c;
+}
+
+.commit.vulnerability-commit:hover {
+    background: #ffe8e8;
+}
+
+/* CVE 라벨 스타일 */
+.cve-label {
+    display: inline-block;
+    background: #e74c3c;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-right: 8px;
+    font-family: 'Courier New', monospace;
+    animation: pulse-cve 2s ease-in-out infinite;
+}
+
+@keyframes pulse-cve {
+    0%, 100% {
+        box-shadow: 0 0 5px rgba(231, 76, 60, 0.5);
+    }
+    50% {
+        box-shadow: 0 0 15px rgba(231, 76, 60, 0.8);
+    }
+}
